@@ -313,23 +313,55 @@
     reader.readAsDataURL(file);
   });
 
+  function isIOS() {
+    return /iP(hone|od|ad)/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
   document.getElementById('exportBtn').addEventListener('click', async () => {
     const btn = document.getElementById('exportBtn');
     btn.disabled = true;
     btn.textContent = 'Exportando...';
     emojiBtn.blur();
+
+    // No iOS/Safari, downloads programáticos só funcionam se a janela for
+    // aberta de forma síncrona, dentro do próprio clique do usuário.
+    const iosFallbackTab = isIOS() ? window.open('', '_blank') : null;
+
     try {
       const card = document.getElementById('card');
       const canvas = await html2canvas(card, {
         backgroundColor: null,
-        scale: 3,
+        scale: 2,
         useCORS: true
       });
-      const link = document.createElement('a');
-      link.download = 'tweet.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          alert('Não foi possível gerar a imagem. Tente novamente.');
+          if (iosFallbackTab) iosFallbackTab.close();
+          return;
+        }
+
+        const url = URL.createObjectURL(blob);
+
+        if (iosFallbackTab) {
+          // Abre a imagem numa aba nova: no iOS o usuário salva com
+          // toque longo > "Adicionar à Fotos" / "Salvar Imagem".
+          iosFallbackTab.location.href = url;
+        } else {
+          const link = document.createElement('a');
+          link.download = 'tweet.png';
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      }, 'image/png');
     } catch (err) {
+      if (iosFallbackTab) iosFallbackTab.close();
       alert('Erro ao exportar: ' + err.message);
     } finally {
       btn.disabled = false;
